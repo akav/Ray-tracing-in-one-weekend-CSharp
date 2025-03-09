@@ -1,9 +1,15 @@
+using System.Numerics;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+
 namespace RayTracingInOneWeekend;
 
-internal readonly struct Ray(Vec3 origin, Vec3 direction)
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
+internal readonly struct Ray(Vector3 origin, Vector3 direction)
 {
-    public Vec3 Origin { get; } = origin;
-    public Vec3 Direction { get; } = direction;
+    public Vector3 Origin { get; } = origin;
+    public Vector3 Direction { get; } = direction;
 
-    public Vec3 PointAtParameter(double t) => Origin + t * Direction;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public Vector3 PointAtParameter(float t) => Origin + Direction * t;
 }

@@ -1,52 +1,57 @@
 using System;
+using System.Numerics;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace RayTracingInOneWeekend;
 
-internal class Camera
+internal struct Camera
 {
-    private readonly Vec3 _lowerLeftCorner;
-    private readonly Vec3 _horizontal;
-    private readonly Vec3 _vertical;
-    private readonly Vec3 _origin;
-    private readonly Vec3 _u;
-    private readonly Vec3 _v;
-    private readonly double _lensRadius;
-    private readonly Random _rng = new();
-    private static readonly Vec3 Size = new(1, 1, 0);
+    private readonly Vector3 _lowerLeftCorner;
+    private readonly Vector3 _horizontal;
+    private readonly Vector3 _vertical;
+    private readonly Vector3 _origin;
+    private readonly Vector3 _u;
+    private readonly Vector3 _v;
+    private readonly float _lensRadius;
+    private readonly Random _rng = Random.Shared;
+    private static readonly Vector3 Size = new(1, 1, 0);
 
     // verticalFieldOfViewDegrees is top to bottom in degrees.
-    public Camera(Vec3 lookFrom, Vec3 lookAt, Vec3 viewUp, double verticalFieldOfViewDegrees, double aspectRatio, double aperture, double focusDistance)
+    public Camera(Vector3 lookFrom, Vector3 lookAt, Vector3 viewUp, float verticalFieldOfViewDegrees, float aspectRatio, float aperture, float focusDistance)
     {
         _lensRadius = aperture / 2;
-        var theta = verticalFieldOfViewDegrees * Math.PI / 180;
-        var halfHeight = Math.Tan(theta / 2);
+        var theta = verticalFieldOfViewDegrees * MathF.PI / 180;
+        var halfHeight = MathF.Tan(theta / 2);
         var halfWidth = aspectRatio * halfHeight;
 
         _origin = lookFrom;
-        var w = Vec3.UnitVector(lookFrom - lookAt);
-        _u = Vec3.UnitVector(Vec3.Cross(viewUp, w));
-        _v = Vec3.Cross(w, _u);
+        var w = Vector3.Normalize(lookFrom - lookAt);
+        _u = Vector3.Normalize(Vector3.Cross(viewUp, w));
+        _v = Vector3.Cross(w, _u);
 
-        _lowerLeftCorner = _origin - halfWidth * focusDistance * _u - halfHeight * focusDistance * _v - focusDistance * w;
+        _lowerLeftCorner = _origin - (halfWidth * focusDistance) * _u - (halfHeight * focusDistance) * _v - focusDistance * w;
         _horizontal = 2 * halfWidth * focusDistance * _u;
         _vertical = 2 * halfHeight * focusDistance * _v;
     }
 
-    public Ray GetRay(double s, double t)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public Ray GetRay(float s, float t)
     {
         var rayDirection = _lensRadius * RandomInUnitDisk();
         var offset = _u * rayDirection.X + _v * rayDirection.Y;
         return new Ray(_origin + offset, _lowerLeftCorner + s * _horizontal + t * _vertical - _origin - offset);
     }
 
-    private Vec3 RandomInUnitDisk()
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private Vector3 RandomInUnitDisk()
     {
-        Vec3 p;
+        Vector3 p;
         do
         {
-            p = 2 * new Vec3(_rng.NextDouble(), _rng.NextDouble(), 0) - Size;
+            p = 2 * new Vector3(_rng.NextSingle(), _rng.NextSingle(), 0) - Size;
         }
-        while (Vec3.Dot(p, p) >= 1);
+        while (Vector3.Dot(p, p) >= 1);
         return p;
     }
 }

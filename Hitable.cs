@@ -1,64 +1,75 @@
 using System;
+using System.Numerics;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace RayTracingInOneWeekend;
 
 internal struct HitRecord
 {
-    public double T;
-    public Vec3 PointOfIntersection;
-    public Vec3 Normal;
-    public Material Material;
+    public float T;
+    public Vector3 PointOfIntersection;
+    public Vector3 Normal;
+    public IMaterial Material;
 }
 
-internal abstract class Hitable
+internal interface Hitable
 {
-    public abstract bool Hit(Ray r, double tMin, double tMax, ref HitRecord record);
+    bool Hit(Ray r, float tMin, float tMax, ref HitRecord record);
+    AABB BoundingBox { get; }
 }
 
-internal class HitableItems(Hitable[] hitables) : Hitable
+
+internal struct HitableItems : Hitable
 {
-    public override bool Hit(Ray r, double tMin, double tMax, ref HitRecord record)
+    private readonly Hitable _root;
+
+    public HitableItems(Hitable[] hitables)
     {
-        var hitAnything = false;
-        var closestSoFar = tMax;
-
-        foreach (var t in hitables)
-        {
-            if (!t.Hit(r, tMin, closestSoFar, ref record))
-                continue;
-
-            hitAnything = true;
-            closestSoFar = record.T;
-        }
-
-        return hitAnything;
+        var rng = new Random();
+        _root = new BVHNode(hitables, 0, hitables.Length, rng);
     }
+
+    public bool Hit(Ray r, float tMin, float tMax, ref HitRecord record)
+    {
+        return _root.Hit(r, tMin, tMax, ref record);
+    }
+
+    public AABB BoundingBox => _root.BoundingBox;
 }
 
-internal class Sphere(Vec3 center, double radius, Material material) : Hitable
+internal struct Sphere : Hitable
 {
-    public override bool Hit(Ray r, double tMin, double tMax, ref HitRecord record)
+    private readonly Vector3 _center;
+    private readonly float _radius;
+    private readonly IMaterial _material;
+
+    public Sphere(Vector3 center, float radius, IMaterial material)
     {
-        var oc = r.Origin - center;
-        var a = Vec3.Dot(r.Direction, r.Direction);
-        var b = Vec3.Dot(oc, r.Direction);
-        var c = Vec3.Dot(oc, oc) - radius * radius;
+        _center = center;
+        _radius = radius;
+        _material = material;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public bool Hit(Ray r, float tMin, float tMax, ref HitRecord record)
+    {
+        var oc = r.Origin - _center;
+        var a = Vector3.Dot(r.Direction, r.Direction);
+        var b = Vector3.Dot(oc, r.Direction);
+        var c = Vector3.Dot(oc, oc) - _radius * _radius;
         var discriminant = b * b - a * c;
 
         if (discriminant > 0)
         {
-            var sqrtDiscriminant = Math.Sqrt(discriminant);
+            var sqrtDiscriminant = MathF.Sqrt(discriminant);
             var solution1 = (-b - sqrtDiscriminant) / a;
             if (solution1 < tMax && solution1 > tMin)
             {
                 record.T = solution1;
                 record.PointOfIntersection = r.PointAtParameter(record.T);
-
-                // Normal is computed by computing the vector center to
-                // point of intersection Dividing by radius causes this
-                // vector to become a unit vector.
-                record.Normal = (record.PointOfIntersection - center) / radius;
-                record.Material = material;
+                record.Normal = Vector3.Divide(record.PointOfIntersection - _center, _radius);
+                record.Material = _material;
                 return true;
             }
 
@@ -67,12 +78,14 @@ internal class Sphere(Vec3 center, double radius, Material material) : Hitable
             {
                 record.T = solution2;
                 record.PointOfIntersection = r.PointAtParameter(record.T);
-                record.Normal = (record.PointOfIntersection - center) / radius;
-                record.Material = material;
+                record.Normal = Vector3.Divide(record.PointOfIntersection - _center, _radius);
+                record.Material = _material;
                 return true;
             }
         }
 
         return false;
     }
+
+    public AABB BoundingBox => new AABB(_center - new Vector3(_radius), _center + new Vector3(_radius));
 }

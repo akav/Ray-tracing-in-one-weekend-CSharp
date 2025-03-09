@@ -1,5 +1,10 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
+using System.Numerics;
+using System.Threading;
+using System.Threading.Tasks;
 
 // Tip: on Windows, make sure to use cmd.exe to run the application. With
 // PowerShell, the redirected output ends up with a Unicode byte order mark
@@ -10,114 +15,183 @@ namespace RayTracingInOneWeekend;
 
 internal static class Program
 {
-    private static readonly Random Rng = new();
-    private static readonly Vec3 White = new(1, 1, 1);
-    private static readonly Vec3 Black = new(0, 0, 0);
-    private static readonly Vec3 Blue = new(0.5, 0.7, 1);
+    private static readonly Vector3 White = new(1, 1, 1);
+    private static readonly Vector3 Black = new(0, 0, 0);
+    private static readonly Vector3 Blue = new(0.5f, 0.7f, 1);
 
-    private static Vec3 Color(Ray ray, HitableItems world, int depth)
+    private static Vector3 Color(Ray ray, HitableItems world, int depth, Random rng)
     {
-        var record = new HitRecord();
+        var color = Vector3.Zero;
+        var attenuation = Vector3.One;
+        var currentRay = ray;
 
-        // Ignore close hits as they're likely the cause of rounding errors
-        // with t values. Not ignoring causes an undesirable visual effect
-        // called the shadow acne.
-        if (world.Hit(ray, 0.001, double.MaxValue, ref record))
+        for (int i = 0; i < 50; i++)
         {
-            return depth < 50 && record.Material.Scatter(ray, record, out var attenuation, out var scatterRay)
-                ? attenuation * Color(scatterRay, world, depth + 1)
-                : Black;
+            var record = new HitRecord();
+            if (world.Hit(currentRay, 0.001f, float.MaxValue, ref record))
+            {
+                if (record.Material.Scatter(currentRay, record, out var tempAttenuation, out var scatterRay))
+                {
+                    attenuation *= tempAttenuation;
+                    currentRay = scatterRay;
+                }
+                else
+                {
+                    return color;
+                }
+            }
+            else
+            {
+                var unitDirection = Vector3.Normalize(currentRay.Direction);
+                var t = 0.5f * (unitDirection.Y + 1);
+                color += attenuation * ((1 - t) * White + t * Blue);
+                return color;
+            }
         }
 
-        var unitDirection = Vec3.UnitVector(ray.Direction);
-        var t = 0.5 * (unitDirection.Y + 1);
-        return (1 - t) * White + t * Blue;
+        return color;
     }
 
     private static HitableItems RandomScene()
     {
         var hitables = new List<Hitable>
         {
-            new Sphere(new Vec3(0, -1000, 0), 1000, new Lambertian(new Vec3(0.5, 0.5, 0.5)))
+            new Sphere(new Vector3(0, -1000f, 0), 1000, new Lambertian(new Vector3(0.5f, 0.5f, 0.5f)))
         };
 
+        var rng = new Random();
         for (var a = -11; a < 11; a++)
         {
             for (var b = -11; b < 11; b++)
             {
-                var chooseMaterial = Rng.NextDouble();
-                var center = new Vec3(a + 0.9 * Rng.NextDouble(), 0.2, b + 0.9 * Rng.NextDouble());
+                var chooseMaterial = rng.NextSingle();
+                var center = new Vector3(a + 0.9f * rng.NextSingle(), 0.2f, b + 0.9f * rng.NextSingle());
 
-                if ((center - new Vec3(4, 0.2, 0)).Length() > 0.9)
+                if ((center - new Vector3(4, 0.2f, 0)).Length() > 0.9)
                 {
-                    // Diffuse
                     if (chooseMaterial < 0.8)
                     {
                         hitables.Add(
-                            new Sphere(center, 0.2,
+                            new Sphere(center, 0.2f,
                                 new Lambertian(
-                                    new Vec3(
-                                        Rng.NextDouble() * Rng.NextDouble(),
-                                        Rng.NextDouble() * Rng.NextDouble(),
-                                        Rng.NextDouble() * Rng.NextDouble()))));
+                                    new Vector3(
+                                        rng.NextSingle() * rng.NextSingle(),
+                                        rng.NextSingle() * rng.NextSingle(),
+                                        rng.NextSingle() * rng.NextSingle()))));
                     }
-                    // Metal
                     else if (chooseMaterial < 0.95)
                     {
                         hitables.Add(
-                            new Sphere(center, 0.2,
+                            new Sphere(center, 0.2f,
                                 new Metal(
-                                    new Vec3(
-                                        0.5 * (1 + Rng.NextDouble()),
-                                        0.5 * (1 + Rng.NextDouble()),
-                                        0.5 * (1 + Rng.NextDouble())), 0.1)));
+                                    new Vector3(
+                                        0.5f * (1 + rng.NextSingle()),
+                                        0.5f * (1 + rng.NextSingle()),
+                                        0.5f * (1 + rng.NextSingle())), 0.1f)));
                     }
-                    // Glass
                     else
-                        hitables.Add(new Sphere(center, 0.2, new Dielectric(1.5)));
+                        hitables.Add(new Sphere(center, 0.2f, new Dielectric(1.5f)));
                 }
             }
         }
 
-        hitables.Add(new Sphere(new Vec3(0, 1, 0), 1, new Dielectric(1.5)));
-        hitables.Add(new Sphere(new Vec3(-4, 1, 0), 1, new Lambertian(new Vec3(0.4, 0.2, 0.1))));
-        hitables.Add(new Sphere(new Vec3(4, 1, 0), 1, new Metal(new Vec3(0.7, 0.6, 0.5), 0.0)));
-        return new HitableItems([.. hitables]);
+        hitables.Add(new Sphere(new Vector3(0, 1, 0), 1, new Dielectric(1.5f)));
+        hitables.Add(new Sphere(new Vector3(-4, 1, 0), 1, new Lambertian(new Vector3(0.4f, 0.2f, 0.1f))));
+        hitables.Add(new Sphere(new Vector3(4, 1, 0), 1, new Metal(new Vector3(0.7f, 0.6f, 0.5f), 0.0f)));
+        return new HitableItems(hitables.ToArray());
     }
 
     private static void Main()
     {
-        const int numX = 1200;
+        const int numX = 1280;
         const int numY = 800;
         const int numSamples = 10;
 
-        Console.WriteLine($"P3\n{numX} {numY}\n255\n");
-
         var world = RandomScene();
-        var lookFrom = new Vec3(13, 2, 3);
-        var lookAt = new Vec3(0, 0, 0);
+        var lookFrom = new Vector3(13, 2, 3);
+        var lookAt = new Vector3(0, 0, 0);
         var distanceToFocus = 10;
-        var aperture = 0.1;
-        var camera = new Camera(lookFrom, lookAt, new Vec3(0, 1, 0), 20, numX / (double)numY, aperture, distanceToFocus);
+        var aperture = 0.1f;
+        var camera = new Camera(lookFrom, lookAt, new Vector3(0, 1, 0), 20, numX / (float)numY, aperture, distanceToFocus);
 
-        for (var j = numY - 1; j >= 0; j--)
+        var pixels = new int[numY, numX, 3];
+        var cts = new CancellationTokenSource();
+        var token = cts.Token;
+
+        var partitioner = Partitioner.Create(0, numY);
+        var totalRows = numY;
+        var completedRows = 0;
+
+        // Progress indicator task
+        var progressTask = Task.Run(() =>
         {
-            for (var i = 0; i < numX; i++)
+            while (!token.IsCancellationRequested)
             {
-                var col = new Vec3(0, 0, 0);
-                for (var s = 0; s < numSamples; s++)
-                {
-                    var u = (i + Rng.NextDouble()) / numX;
-                    var v = (j + Rng.NextDouble()) / numY;
-                    var r = camera.GetRay(u, v);
-                    col += Color(r, world, 0);
-                }
+                var progress = (double)completedRows / totalRows;
+                var progressBar = new string('#', (int)(progress * 50)).PadRight(50);
+                Console.Write($"\r[{progressBar}] {progress:P0}");
+                Thread.Sleep(1000); // Update every second
+            }
+        });
 
-                col /= numSamples;
-                var ir = (int)(255.99 * Math.Sqrt(col.R));
-                var ig = (int)(255.99 * Math.Sqrt(col.G));
-                var ib = (int)(255.99 * Math.Sqrt(col.B));
-                Console.WriteLine($"{ir} {ig} {ib}");
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+        try
+        {
+            Parallel.ForEach(partitioner, new ParallelOptions { CancellationToken = token }, (range, state) =>
+            {
+                var rng = new Random();
+                for (var j = range.Item1; j < range.Item2; j++)
+                {
+                    for (var i = 0; i < numX; i++)
+                    {
+                        token.ThrowIfCancellationRequested();
+
+                        var col = Vector3.Zero;
+                        for (var s = 0; s < numSamples; s++)
+                        {
+                            var u = (i + rng.NextSingle()) / numX;
+                            var v = (j + rng.NextSingle()) / numY;
+                            var r = camera.GetRay(u, v);
+                            col += Color(r, world, 0, rng);
+                        }
+
+                        col /= numSamples;
+                        var ir = (int)(255.99 * MathF.Sqrt(col.X));
+                        var ig = (int)(255.99 * MathF.Sqrt(col.Y));
+                        var ib = (int)(255.99 * MathF.Sqrt(col.Z));
+                        pixels[j, i, 0] = ir;
+                        pixels[j, i, 1] = ig;
+                        pixels[j, i, 2] = ib;
+                    }
+                    Interlocked.Increment(ref completedRows);
+                }
+            });
+        }
+        catch (OperationCanceledException)
+        {
+            Console.WriteLine("Operation was canceled.");
+        }
+
+        // Wait for the progress task to complete
+        cts.Cancel();
+        progressTask.Wait();
+
+        stopwatch.Stop();
+
+        // Ensure the final progress bar is complete
+        Console.Write($"\r[##################################################] 100%");
+        Console.WriteLine($"\nExecution Time: {stopwatch.Elapsed}");
+
+        using (var writer = new StreamWriter("output.ppm"))
+        {
+            writer.WriteLine($"P3\n{numX} {numY}\n255");
+            for (var j = numY - 1; j >= 0; j--)
+            {
+                for (var i = 0; i < numX; i++)
+                {
+                    writer.WriteLine($"{pixels[j, i, 0]} {pixels[j, i, 1]} {pixels[j, i, 2]}");
+                }
             }
         }
     }
